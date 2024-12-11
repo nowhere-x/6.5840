@@ -50,11 +50,6 @@ func (c *Coordinator) CompleteTask(request *TaskRequest, response *TaskResponse)
 	c.Mutex.Lock()
 	defer c.Mutex.Unlock()
 
-	// _, ok := c.Workers[request.WorkerID]
-	// if !ok {
-	// 	return errors.New("Worker does not exist")
-	// }
-
 	// check if it is a valid task completed
 	if request.TaskType == MAP && c.MapTasks[request.TaskID].Status != MAP_IN_PROGRESS {
 		return nil
@@ -149,6 +144,18 @@ func (c *Coordinator) ResetDeadTasks() {
 	}
 }
 
+func (c *Coordinator) TimeoutCheck() {
+	for {
+		// check every 1 seconds
+		time.Sleep(1 * time.Second)
+
+		// since Reset need to access shared variables, mutex needed
+		c.Mutex.Lock()
+		c.ResetDeadTasks()
+		c.Mutex.Unlock()
+	}
+}
+
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
@@ -156,8 +163,7 @@ func (c *Coordinator) Done() bool {
 	c.Mutex.Lock()
 	defer c.Mutex.Unlock()
 
-	// clear dead tasks every time tick
-	c.ResetDeadTasks()
+	// remove ResetDeadTasks() here to a new coroutine
 	return c.MapRemaining == 0 && c.ReduceRemaining == 0
 }
 
@@ -214,5 +220,9 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	}
 
 	coordinator.server()
+
+	// set a new coroutine to periodically check timeout
+	go coordinator.TimeoutCheck()
+
 	return &coordinator
 }
