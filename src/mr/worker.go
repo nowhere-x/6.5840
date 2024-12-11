@@ -99,6 +99,14 @@ func map_task(response *TaskResponse, mapf func(string, string) []KeyValue) {
 	// encode bucket to intermediate JSON files
 	for bucket, bucket_list := range intermediate {
 		oname := fmt.Sprintf("./mr-%d-%d.json", bucket, response.TaskID)
+
+		// pre-check whether file already exists
+		_, err := os.Stat(oname)
+		if err == nil {
+			continue
+		}
+
+		// file does not exist
 		ofile, err := os.Create(oname)
 		if err != nil {
 			log_message(oname+" create failed", WARNING)
@@ -139,12 +147,19 @@ func reduce_task(response *TaskResponse, reducef func(string, []string) string) 
 	}
 
 	// Sort intermediate key-value pairs by key
+	// This Sort() is rather important for later apply reduce function (can't be removed)
 	sort.Sort(ByKey(intermediate))
 
 	// Create output file
 	oname := fmt.Sprintf("mr-out-%d", response.TaskID)
-	ofile, _ := os.Create(oname)
 
+	// pre-check whether file already exists
+	_, err := os.Stat(oname)
+	if err == nil {
+		return
+	}
+
+	ofile, _ := os.Create(oname)
 	// Apply reduce function
 	i := 0
 	for i < len(intermediate) {
@@ -152,11 +167,11 @@ func reduce_task(response *TaskResponse, reducef func(string, []string) string) 
 		for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
 			j++
 		}
-		word_count_list := []string{}
+		identical_kv := []string{}
 		for k := i; k < j; k++ {
-			word_count_list = append(word_count_list, intermediate[k].Value)
+			identical_kv = append(identical_kv, intermediate[k].Value)
 		}
-		word_count := reducef(intermediate[i].Key, word_count_list)
+		word_count := reducef(intermediate[i].Key, identical_kv)
 		fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, word_count)
 		i = j
 	}
@@ -220,6 +235,6 @@ func Worker(mapf func(string, string) []KeyValue,
 		default:
 			time.Sleep(1 * time.Second)
 		}
-		//time.Sleep(3 * time.Second)
+		//time.Sleep(1 * time.Second)
 	}
 }
